@@ -1,17 +1,8 @@
 #!/usr/bin/env bash
-if [ -z $1 ]; then
-  echo
-  echo "Usage:"
-  echo "   otp google"
-  echo
-  echo "Configuration: $HOME/.otpkeys"
-  echo "Format: name=key"
-  exit
+key=$(grep -m1 "^$1=" ~/.otpkeys | cut -d= -f2-)
+if [ -z "$1" ] || [ -z "$key" ]; then
+  echo "usage: otp <name>   (names from ~/.otpkeys)" >&2
+  exit 1
 fi
-OTPKEY=$(sed -n "s/${1}=//p" $HOME/.otpkeys)
-if [ -z $OTPKEY ]; then
-  echo "$(basename $0): Bad Service Name '$1'"
-  $0
-  exit
-fi
-oathtool --totp -b $OTPKEY | pbcopy
+code=$(echo "$key" | oathtool --totp -b -) || exit 1
+printf %s "$code" | pbcopy

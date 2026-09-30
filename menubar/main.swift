@@ -43,13 +43,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         process.arguments = [sender.title]
         // GUI apps don't get the shell PATH, and otp needs oathtool from Homebrew
         process.environment = ["HOME": NSHomeDirectory(), "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"]
-        process.terminationHandler = { _ in
-            DispatchQueue.main.async {
-                self.setIcon("checkmark")
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.setIcon("key.fill") }
-            }
+        process.terminationHandler = { p in
+            let symbol = p.terminationStatus == 0 ? "checkmark" : "xmark"
+            DispatchQueue.main.async { self.flash(symbol) }
         }
-        try? process.run()
+        do { try process.run() } catch { flash("xmark") }
+    }
+
+    // Briefly swap the menubar icon to show the result
+    func flash(_ symbol: String) {
+        setIcon(symbol)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.setIcon("key.fill") }
     }
 
     // -t: the file has no extension, so ask for the default text editor explicitly

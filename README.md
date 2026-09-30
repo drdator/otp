@@ -6,7 +6,7 @@ TOTP codes from the command line and the macOS menubar.
 
 ```sh
 brew install oath-toolkit
-cp otp /usr/local/bin/
+ln -sf "$PWD/otp" /usr/local/bin/otp
 ```
 
 Add your secrets to `~/.otpkeys`, one per line:
