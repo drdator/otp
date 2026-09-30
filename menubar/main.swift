@@ -25,6 +25,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             menu.addItem(item)
         }
         menu.addItem(.separator())
+        let edit = NSMenuItem(title: "Edit keys", action: #selector(editKeys), keyEquivalent: "")
+        edit.target = self
+        edit.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: nil)
+        menu.addItem(edit)
         let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.target = self
         login.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
@@ -46,6 +50,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         try? process.run()
+    }
+
+    // -t: the file has no extension, so ask for the default text editor explicitly
+    @objc func editKeys() {
+        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-t", keysPath])
     }
 
     @objc func toggleLaunchAtLogin() {
