@@ -14,6 +14,7 @@ otp add github      store a secret (prompts for it)
 otp github          copy the current code to the clipboard
 otp                 list names
 otp rm github       delete a secret
+otp show github     print the stored secret
 ```
 
 When piped, `otp <name>` prints the code instead of copying it:
@@ -30,6 +31,15 @@ open ~/Applications/OTP.app
 ```
 
 A key icon in the menubar lists your keys. Pick one to copy its code. Add keys and enable "Launch at Login" from the same menu.
+
+## Backup and restore
+
+```sh
+otp export > otpkeys.enc
+otp import < otpkeys.enc
+```
+
+Both ask for a passphrase. The backup is encrypted, so it's safe to copy to a new Mac.
 
 ## Migrating from ~/.otpkeys
 

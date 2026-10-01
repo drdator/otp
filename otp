@@ -7,6 +7,9 @@ usage: otp <name>       copy the code (prints it instead when piped)
        otp              list names
        otp add <name>   store a secret (prompts, or reads stdin)
        otp rm <name>    delete a secret
+       otp show <name>  print a secret
+       otp export       print an encrypted backup (asks for a passphrase)
+       otp import       restore a backup from stdin
 EOF
   exit 1
 }
@@ -28,6 +31,18 @@ case "$1" in
   rm)
     [ -n "$2" ] || usage
     security delete-generic-password -s otp -a "$2" >/dev/null
+    ;;
+  show)
+    [ -n "$2" ] || usage
+    security find-generic-password -s otp -a "$2" -w 2>/dev/null || usage
+    ;;
+  export)
+    for name in $("$0"); do echo "$name=$("$0" show "$name")"; done | openssl enc -aes-256-cbc -pbkdf2 -a
+    ;;
+  import)
+    # Decrypt fully first so a wrong passphrase doesn't feed garbage to add
+    keys=$(openssl enc -d -aes-256-cbc -pbkdf2 -a) || exit 1
+    while IFS== read -r name secret; do printf %s "$secret" | "$0" add "$name"; done <<< "$keys"
     ;;
   *)
     secret=$(security find-generic-password -s otp -a "$1" -w 2>/dev/null) || usage
