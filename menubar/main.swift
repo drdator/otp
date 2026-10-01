@@ -1,8 +1,23 @@
 import AppKit
 import ServiceManagement
 
-let otpPath = "/usr/local/bin/otp"
-let keysPath = NSHomeDirectory() + "/.otpkeys"
+// Runs the otp CLI, which only talks to the keychain and oathtool, so it's quick enough to wait for
+func otp(_ args: [String], input: String = "") -> (ok: Bool, output: String) {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/local/bin/otp")
+    process.arguments = args
+    // GUI apps don't get the shell PATH, and otp needs oathtool from Homebrew
+    process.environment = ["HOME": NSHomeDirectory(), "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"]
+    let inPipe = Pipe(), outPipe = Pipe()
+    process.standardInput = inPipe
+    process.standardOutput = outPipe
+    do { try process.run() } catch { return (false, "") }
+    inPipe.fileHandleForWriting.write(Data(input.utf8))
+    try? inPipe.fileHandleForWriting.close()
+    let output = String(decoding: outPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    process.waitUntilExit()
+    return (process.terminationStatus == 0, output.trimmingCharacters(in: .newlines))
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -14,21 +29,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusItem.menu = menu
     }
 
-    // Rebuilt on every open so edits to ~/.otpkeys show up without a restart
+    // Rebuilt on every open so keys added from the terminal show up without a restart
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
-        let contents = (try? String(contentsOfFile: keysPath, encoding: .utf8)) ?? ""
-        for line in contents.split(separator: "\n") {
-            guard let eq = line.firstIndex(of: "=") else { continue }
-            let item = NSMenuItem(title: String(line[..<eq]), action: #selector(copyCode), keyEquivalent: "")
+        for name in otp([]).output.split(separator: "\n") {
+            let item = NSMenuItem(title: String(name), action: #selector(copyCode), keyEquivalent: "")
             item.target = self
             menu.addItem(item)
         }
         menu.addItem(.separator())
-        let edit = NSMenuItem(title: "Edit keys", action: #selector(editKeys), keyEquivalent: "")
-        edit.target = self
-        edit.image = NSImage(systemSymbolName: "square.and.pencil", accessibilityDescription: nil)
-        menu.addItem(edit)
+        let add = NSMenuItem(title: "Add key…", action: #selector(addKey), keyEquivalent: "")
+        add.target = self
+        add.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
+        menu.addItem(add)
         let login = NSMenuItem(title: "Launch at Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         login.target = self
         login.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
@@ -38,27 +51,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func copyCode(_ sender: NSMenuItem) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: otpPath)
-        process.arguments = [sender.title]
-        // GUI apps don't get the shell PATH, and otp needs oathtool from Homebrew
-        process.environment = ["HOME": NSHomeDirectory(), "PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"]
-        process.terminationHandler = { p in
-            let symbol = p.terminationStatus == 0 ? "checkmark" : "xmark"
-            DispatchQueue.main.async { self.flash(symbol) }
+        let result = otp([sender.title])
+        if result.ok {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(result.output, forType: .string)
         }
-        do { try process.run() } catch { flash("xmark") }
+        flash(result.ok ? "checkmark" : "xmark")
+    }
+
+    @objc func addKey() {
+        let name = NSTextField(frame: NSRect(x: 0, y: 32, width: 240, height: 24))
+        name.placeholderString = "Name"
+        let secret = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 240, height: 24))
+        secret.placeholderString = "Secret"
+        name.nextKeyView = secret
+        let fields = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 56))
+        fields.addSubview(name)
+        fields.addSubview(secret)
+
+        let alert = NSAlert()
+        alert.messageText = "Add key"
+        alert.accessoryView = fields
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        alert.window.initialFirstResponder = name
+        NSApp.activate()
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        if otp(["add", name.stringValue], input: secret.stringValue).ok {
+            flash("checkmark")
+        } else {
+            let error = NSAlert()
+            error.messageText = "Couldn't add \"\(name.stringValue)\""
+            error.informativeText = "Check that the secret is a valid base32 TOTP key."
+            error.runModal()
+        }
     }
 
     // Briefly swap the menubar icon to show the result
     func flash(_ symbol: String) {
         setIcon(symbol)
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { self.setIcon("key.fill") }
-    }
-
-    // -t: the file has no extension, so ask for the default text editor explicitly
-    @objc func editKeys() {
-        _ = try? Process.run(URL(fileURLWithPath: "/usr/bin/open"), arguments: ["-t", keysPath])
     }
 
     @objc func toggleLaunchAtLogin() {

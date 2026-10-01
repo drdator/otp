@@ -1,8 +1,37 @@
 #!/usr/bin/env bash
-key=$(grep -m1 "^$1=" ~/.otpkeys | cut -d= -f2-)
-if [ -z "$1" ] || [ -z "$key" ]; then
-  echo "usage: otp <name>   (names from ~/.otpkeys)" >&2
+# Secrets live in the login keychain as generic passwords with service "otp"
+
+usage() {
+  cat >&2 <<EOF
+usage: otp <name>       copy the code (prints it instead when piped)
+       otp              list names
+       otp add <name>   store a secret (prompts, or reads stdin)
+       otp rm <name>    delete a secret
+EOF
   exit 1
-fi
-code=$(echo "$key" | oathtool --totp -b -) || exit 1
-printf %s "$code" | pbcopy
+}
+
+case "$1" in
+  "")
+    security dump-keychain | awk -F'"' '/^keychain:/ {a=""} /"acct"<blob>=/ {a=$4} /"svce"<blob>="otp"$/ {print a}' | sort
+    ;;
+  add)
+    [ -n "$2" ] || usage
+    read -rsp "Secret for $2: " secret; [ -t 0 ] && echo >&2
+    secret=${secret// /}
+    echo "$secret" | oathtool --totp -b - >/dev/null 2>&1 || { echo "otp: $2: not a valid base32 secret" >&2; exit 1; }
+    # Through security -i so the secret never shows up in a process argument list
+    echo "add-generic-password -U -s otp -a $2 -w $secret" | security -i
+    # security -i always exits 0, so confirm the secret was actually stored
+    [ "$(security find-generic-password -s otp -a "$2" -w 2>/dev/null)" = "$secret" ]
+    ;;
+  rm)
+    [ -n "$2" ] || usage
+    security delete-generic-password -s otp -a "$2" >/dev/null
+    ;;
+  *)
+    secret=$(security find-generic-password -s otp -a "$1" -w 2>/dev/null) || usage
+    code=$(echo "$secret" | oathtool --totp -b -) || exit 1
+    if [ -t 1 ]; then printf %s "$code" | pbcopy; else echo "$code"; fi
+    ;;
+esac
