@@ -27,6 +27,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let menu = NSMenu()
         menu.delegate = self
         statusItem.menu = menu
+
+        // Menubar-only apps have no main menu, but ⌘X/⌘C/⌘V/⌘A in text fields are routed through its Edit menu
+        let edit = NSMenu()
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        let editItem = NSMenuItem()
+        editItem.submenu = edit
+        NSApp.mainMenu = NSMenu()
+        NSApp.mainMenu?.addItem(editItem)
     }
 
     // Rebuilt on every open so keys added from the terminal show up without a restart
